@@ -6,9 +6,10 @@ import L from 'leaflet';
 import toast, { Toaster } from 'react-hot-toast';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
+import logo from './assets/logo.png';
 
 // ✅ BASE URL UPDATE (AWS)
-const API_BASE_URL = "http://Foodiee-backend-env.eba-5d9p6wzb.eu-north-1.elasticbeanstalk.com";
+const API_BASE_URL = "https://Foodiee-backend-env.eba-5d9p6wzb.eu-north-1.elasticbeanstalk.com";
 
 const getBikeIcon = (rotationAngle) => {
   return new L.DivIcon({
@@ -397,7 +398,6 @@ export default function DeliveryDashboard() {
     return `${hrs}h ${mins}m ${secs}s`;
   };
 
- // --- REAL-TIME BROADCAST PUSH NOTIFICATION & FLEET TRACKING SYNC ---
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -406,13 +406,9 @@ export default function DeliveryDashboard() {
       webSocketFactory: () => socket,
       reconnectDelay: 5000,
       onConnect: () => {
-        console.log("Delivery App Connected to WebSocket!");
-
-        // 1. 🚀 డెలివరీ పార్ట్‌నర్‌లకు వచ్చే బ్రాడ్‌కాస్ట్ పుష్ నోటిఫికేషన్ సబ్‌స్క్రిప్షన్
         stompClient.subscribe('/topic/broadcast/partners', (message) => {
           const broadcastData = JSON.parse(message.body);
           
-          // నోటిఫికేషన్ సౌండ్ ప్లే చేయడం
           if (typeof playSelectedRingtone === 'function') {
             playSelectedRingtone();
           }
@@ -432,7 +428,6 @@ export default function DeliveryDashboard() {
           }
         });
 
-        // 2. ఆల్ యూజర్స్ బ్రాడ్‌కాస్ట్ సబ్‌స్క్రిప్షన్
         stompClient.subscribe('/topic/broadcast/all', (message) => {
           const broadcastData = JSON.parse(message.body);
           
@@ -1088,7 +1083,7 @@ export default function DeliveryDashboard() {
                   <div className="text-center space-y-3">
                     <div className="w-20 h-20 mx-auto rounded-[24px] p-1 bg-gradient-to-tr from-[#fc8019] via-amber-500 to-yellow-400 shadow-xl shadow-orange-500/30 flex items-center justify-center transform hover:scale-105 transition-transform duration-300">
                       <div className="w-full h-full bg-slate-950 rounded-[22px] overflow-hidden flex items-center justify-center">
-                        <img src="/src/assets/logo.png" alt="Foodiee Logo" className="w-full h-full object-cover" />
+                        <img src={logo} alt="Foodiee Logo" className="w-full h-full object-cover" />
                       </div>
                     </div>
                     
