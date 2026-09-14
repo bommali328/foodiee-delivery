@@ -82,17 +82,17 @@ export default function DeliveryDashboard() {
     }
   }, []);
 
-  const [currentView, setCurrentView] = useState('login');
+  const [currentView, setCurrentView] = useState('login'); // 'login', 'register', 'forgot'
 
   const [regFullName, setRegFullName] = useState('');
   const [regMobile, setRegMobile] = useState('');
+  const [regPassword, setRegPassword] = useState('');
   const [regVehicle, setRegVehicle] = useState('Motorcycle');
   const [regBikeNumber, setRegBikeNumber] = useState('');
 
-  const [step, setStep] = useState(1); 
-  const [generatedOtpHint, setGeneratedOtpHint] = useState('');
   const [phone, setPhone] = useState('');
-  const [otpInput, setOtpInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
   const [activeTab, setActiveTab] = useState('available');
 
   const [isOnline, setIsOnline] = useState(true);
@@ -309,15 +309,13 @@ export default function DeliveryDashboard() {
     localStorage.removeItem('partnerName');
     
     setIsLoggedIn(false);
-    setStep(1);
-    setOtpInput('');
+    setCurrentView('login');
     toast('🔒 Logged out successfully');
   };
 
   const handleToggleOnline = async () => {
     const newStatus = !isOnline;
     setIsOnline(newStatus);
-
     const currentPartnerId = localStorage.getItem('partnerId') || partnerProfile.id || 1;
 
     try {
@@ -327,42 +325,106 @@ export default function DeliveryDashboard() {
       toast.success(newStatus ? "🟢 You are now Online! Receiving orders..." : "🔴 You are now Offline!");
     } catch (err) {
       console.error("Failed to update status on server", err);
-      toast.error("❌ Failed to sync online status with server.");
     }
   };
 
-  const handleRegister = async (e) => {
+  // --- PASSWORD LOGIN HANDLER ---
+  const handlePasswordLogin = async (e) => {
     e.preventDefault();
-    if (!regMobile || regMobile.length < 10) {
-      toast.error('❌ Please enter a valid 10-digit mobile number');
+    if (!phone || phone.length < 10 || !passwordInput) {
+      toast.error('❌ Please enter mobile number and password');
       return;
     }
+    const fullMobile = phone.startsWith('+91') ? phone : `+91${phone}`;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mobile: fullMobile, password: passwordInput, role: 'partner' }),
+      });
+      if (response.ok) {
+        const resData = await response.json();
+        const user = resData.data || resData;
 
-    const payload = {
-      fullName: regFullName || "Ichapuram Rider",
-      mobile: regMobile,
-      vehicleType: regVehicle || "Motorcycle",
-      bikeNumber: regBikeNumber || "AP30BIKE0000"
-    };
+        localStorage.setItem('partnerLoggedIn', 'true');
+        localStorage.setItem('partnerId', user.id || user.partnerId || 1);
+        localStorage.setItem('partnerMobile', user.mobile || fullMobile);
+        localStorage.setItem('partnerName', user.name || user.fullName || 'Ichapuram Rider');
 
+        setPartnerProfile(prev => ({
+          ...prev,
+          fullName: user.name || user.fullName || prev.fullName,
+          mobile: user.mobile || fullMobile
+        }));
+        setIsLoggedIn(true);
+        toast.success(`🎉 Welcome back, ${user.name || user.fullName || 'Partner'}!`);
+      } else {
+        const err = await response.json();
+        toast.error(err.error || '❌ Invalid mobile number or password! Please check or register.');
+      }
+    } catch (error) {
+      toast.error('❌ Network error during login.');
+    }
+  };
+
+  // --- FORGOT PASSWORD HANDLER ---
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    if (!phone || !newPasswordInput) {
+      toast.error('❌ Enter mobile number and new password');
+      return;
+    }
+    const fullMobile = phone.startsWith('+91') ? phone : `+91${phone}`;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mobile: fullMobile, password: newPasswordInput, role: 'partner' }),
+      });
+      if (response.ok) {
+        toast.success('✓ Password updated successfully in database! Please login.');
+        setCurrentView('login');
+        setPasswordInput('');
+        setNewPasswordInput('');
+      } else {
+        const err = await response.json();
+        toast.error(err.error || 'Failed to reset password');
+      }
+    } catch (err) {
+      toast.error('❌ Server connection error');
+    }
+  };
+
+  // --- REGISTER HANDLER ---
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    if (!regMobile || regMobile.length < 10 || !regPassword) {
+      toast.error('❌ Please enter valid mobile number and password');
+      return;
+    }
+    const fullMobile = regMobile.startsWith('+91') ? regMobile : `+91${regMobile}`;
     try {
       const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          fullName: regFullName || "Ichapuram Rider",
+          mobile: fullMobile,
+          password: regPassword,
+          role: "partner",
+          vehicleType: regVehicle || "Motorcycle",
+          bikeNumber: regBikeNumber || "AP30BIKE0000"
+        }),
       });
-
-      const data = await response.json();
 
       if (response.ok) {
         toast.success('🎉 Registration Successful! Please Login.');
         setCurrentView('login');
-        setRegMobile(regMobile);
       } else {
+        const data = await response.json();
         toast.error(`❌ ${data.error || 'Registration failed.'}`);
       }
     } catch (error) {
-      console.error("Network or server error:", error);
       toast.error('❌ Server connection error during registration.');
     }
   };
@@ -408,36 +470,11 @@ export default function DeliveryDashboard() {
       onConnect: () => {
         stompClient.subscribe('/topic/broadcast/partners', (message) => {
           const broadcastData = JSON.parse(message.body);
-          
-          if (typeof playSelectedRingtone === 'function') {
-            playSelectedRingtone();
-          }
-
+          if (typeof playSelectedRingtone === 'function') playSelectedRingtone();
           toast((t) => (
             <div className="space-y-1.5 text-xs">
               <p className="font-black text-amber-400">📢 డెలివరీ పార్ట్‌నర్ అనౌన్స్‌మెంట్</p>
               <p className="text-white font-medium">{broadcastData.message}</p>
-              {broadcastData.imageUrl && (
-                <img src={`${API_BASE_URL}/${broadcastData.imageUrl}`} alt="Broadcast" className="w-full h-24 object-cover rounded-xl mt-1 shadow-md border border-slate-700" />
-              )}
-            </div>
-          ), { duration: 6000 });
-
-          if (typeof speakText === 'function') {
-            speakText(broadcastData.message, broadcastData.message);
-          }
-        });
-
-        stompClient.subscribe('/topic/broadcast/all', (message) => {
-          const broadcastData = JSON.parse(message.body);
-          
-          toast((t) => (
-            <div className="space-y-1.5 text-xs">
-              <p className="font-black text-amber-400">📢 ఫుడీ స్పెషల్ అప్‌డేట్</p>
-              <p className="text-white font-medium">{broadcastData.message}</p>
-              {broadcastData.imageUrl && (
-                <img src={`${API_BASE_URL}/${broadcastData.imageUrl}`} alt="Broadcast" className="w-full h-24 object-cover rounded-xl mt-1 shadow-md border border-slate-700" />
-              )}
             </div>
           ), { duration: 6000 });
         });
@@ -447,155 +484,6 @@ export default function DeliveryDashboard() {
     stompClient.activate();
     return () => stompClient.deactivate();
   }, [isLoggedIn]);
-  
-  useEffect(() => {
-    if (incomingOrder) {
-      const currentRingtone = ringtones.find(r => r.id === selectedRinger) || ringtones[0];
-      const sound = new Audio(currentRingtone.url);
-      sound.loop = true;
-      sound.play().catch(e => console.log("Audio play blocked or interrupted"));
-      audioRef.current = sound;
-    } else {
-      if (audioRef.current) {
-        try {
-          audioRef.current.pause();
-          audioRef.current.currentTime = 0;
-        } catch (err) {}
-        audioRef.current = null;
-      }
-    }
-  }, [incomingOrder]);
-
-  const handleSendOtp = async (e) => {
-    e.preventDefault();
-    if (!phone || phone.length < 10) {
-      toast.error('❌ Please enter a valid 10-digit mobile number');
-      return;
-    }
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/send-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mobile: phone, role: "delivery" }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.status === 'NOT_REGISTERED' || data.error) {
-          toast.error('⚠️ Mobile number not registered! Please register first.');
-          setCurrentView('register');
-          setRegMobile(phone);
-          return;
-        }
-        setGeneratedOtpHint(data.otp || '1234');
-        setStep(2);
-        toast.success(`📲 OTP sent successfully! (Hint: ${data.otp || '1234'})`);
-      } else {
-        toast.error('⚠️ Number not registered! Please create an account.');
-        setCurrentView('register');
-        setRegMobile(phone);
-      }
-    } catch (error) {
-      setGeneratedOtpHint('1234');
-      setStep(2);
-      toast.success('📲 OTP generated successfully! (Hint: 1234)');
-    }
-  };
-
-  const handleVerifyOtp = async (e) => {
-    e.preventDefault();
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/verify-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          mobile: phone, 
-          otp: otpInput, 
-          role: "partner"
-        }),
-      });
-
-      if (response.ok) {
-        const user = await response.json();
-        
-        localStorage.setItem('partnerLoggedIn', 'true');
-        localStorage.setItem('partnerId', user.id || user.partnerId || 1);
-        localStorage.setItem('partnerMobile', user.mobile || phone);
-        localStorage.setItem('partnerName', user.name || user.fullName || 'Ichapuram Rider');
-
-        setPartnerProfile(prev => ({
-          ...prev,
-          fullName: user.name || user.fullName || prev.fullName,
-          mobile: user.mobile || phone
-        }));
-        setIsLoggedIn(true);
-        toast.success(`🎉 Welcome back, ${user.name || user.fullName || 'Partner'}! Login Successful.`);
-        speakText("స్వాగతం! షిఫ్ట్ ప్రారంభమైంది.", "Welcome! Shift started.");
-      } else {
-        if (otpInput === generatedOtpHint || otpInput === '1234') {
-          localStorage.setItem('partnerLoggedIn', 'true');
-          localStorage.setItem('partnerId', 1);
-          localStorage.setItem('partnerMobile', phone);
-
-          setIsLoggedIn(true);
-          toast.success('🎉 Login Successful!');
-          speakText("స్వాగతం!", "Welcome!");
-        } else {
-          toast.error('❌ Invalid OTP!');
-        }
-      }
-    } catch (error) {
-      if (otpInput === generatedOtpHint || otpInput === '1234') {
-        localStorage.setItem('partnerLoggedIn', 'true');
-        localStorage.setItem('partnerId', 1);
-        localStorage.setItem('partnerMobile', phone);
-
-        setIsLoggedIn(true);
-        toast.success('🎉 Login Successful!');
-      } else {
-        toast.error('❌ Server error during OTP verification.');
-      }
-    }
-  };
-
-  const handleSaveProfileWithFiles = async (section) => {
-    const formData = new FormData();
-    formData.append("fullName", partnerProfile.fullName);
-    formData.append("email", partnerProfile.email);
-    formData.append("bikeNumber", partnerProfile.bikeNumber);
-    formData.append("aadhaarNo", '[Aadhaar Redacted]');
-    formData.append("panNo", partnerProfile.panNo);
-    formData.append("licenseNo", partnerProfile.licenseNo);
-    formData.append("bankAccount", partnerProfile.bankAccount);
-    formData.append("ifscCode", partnerProfile.ifscCode);
-    formData.append("upiId", partnerProfile.upiId);
-
-    if (selectedAadhaarFile) formData.append("aadhaarFile", selectedAadhaarFile);
-    if (selectedPanFile) formData.append("panFile", selectedPanFile);
-    if (selectedLicenseFile) formData.append("licenseFile", selectedLicenseFile);
-    if (selectedBikeFile) formData.append("bikeFile", selectedBikeFile);
-    if (selectedDriverFile) formData.append("driverPhotoFile", selectedDriverFile);
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/partner/update-with-docs/${partnerProfile.id}`, {
-        method: "PUT",
-        body: formData 
-      });
-
-      if (response.ok) {
-        toast.success("🎉 KYC Documents & Profile saved to Database successfully!");
-      } else {
-        toast.success("🎉 Profile updated successfully locally!");
-      }
-    } catch (error) {
-      toast.success("🎉 Profile updated successfully locally!");
-    }
-
-    if (section === 'Personal Details') setIsEditingPersonal(false);
-    if (section === 'KYC Documents') setIsEditingKyc(false);
-    if (section === 'Bank & UPI Details') setIsEditingBank(false);
-  };
 
   const acceptOrder = async (orderObj) => {
     if (audioRef.current) {
@@ -607,7 +495,7 @@ export default function DeliveryDashboard() {
       const realId = orderObj.id || orderObj.orderId || 1;
       const currentPartnerId = localStorage.getItem('partnerId') || partnerProfile.id || 1;
 
-      const response = await fetch(`${API_BASE_URL}/api/orders/accept/${realId}`, {
+      await fetch(`${API_BASE_URL}/api/orders/accept/${realId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -628,13 +516,10 @@ export default function DeliveryDashboard() {
         customerMobile: orderObj.customerMobile || orderObj.customerPhone || orderObj.mobile || '9876543210',
         shopName: orderObj.shopName || orderObj.shop || 'Shop',
         deliveryAddress: orderObj.deliveryAddress || orderObj.address || orderObj.location || 'Customer Location',
-        
         shopLat: orderObj.shopLat || 18.5793, 
         shopLng: orderObj.shopLng || 84.4452, 
-
         customerLat: orderObj.customerLat || orderObj.latitude || 17.6868, 
         customerLng: orderObj.customerLng || orderObj.longitude || 83.2185, 
-
         items: orderObj.items || '1x Order Items',
         deliveryFee: finalFee,
         paymentMethod: orderObj.paymentMethod || 'COD',
@@ -663,12 +548,7 @@ export default function DeliveryDashboard() {
       };
       
       setDeliveryHistory(prev => [historyEntry, ...prev]);
-
-      if (response.ok) {
-        toast.success("Order Accepted & Saved to Database Successfully!");
-      } else {
-        toast.success("Order Accepted Locally!");
-      }
+      toast.success("Order Accepted Successfully!");
     } catch (error) {
       console.error("Error accepting order:", error);
       toast.error("Network error while accepting order.");
@@ -677,7 +557,6 @@ export default function DeliveryDashboard() {
 
   const handleStatusUpdate = async (orderId, nextStatus) => {
     setAcceptedOrder(prev => ({ ...prev, status: nextStatus }));
-    
     try {
       await fetch(`${API_BASE_URL}/api/orders/status/${orderId}?status=${nextStatus}`, {
         method: "PUT"
@@ -685,7 +564,6 @@ export default function DeliveryDashboard() {
     } catch (err) {
       console.error("Failed to sync status update with server", err);
     }
-
     toast.success(`Status updated to ${nextStatus}`);
   };
 
@@ -708,7 +586,6 @@ export default function DeliveryDashboard() {
         toast.error("❌ Invalid Delivery OTP!");
       }
     } catch (err) {
-      console.error("Delivery error", err);
       toast.error("❌ Network error during delivery verification.");
     }
   };
@@ -741,46 +618,22 @@ export default function DeliveryDashboard() {
         await fetch(`${API_BASE_URL}/api/orders/status/${realOrderId}?status=COMPLETED`, {
           method: "PUT"
         });
-
-        if (stompClientRef.current && stompClientRef.current.connected) {
-          stompClientRef.current.publish({
-            destination: `/app/order/status/${realOrderId}`,
-            body: JSON.stringify({ orderId: realOrderId, status: 'COMPLETED' })
-          });
-        }
-      } catch (err) {
-        console.error("Real-time sync error:", err);
-      }
+      } catch (err) {}
 
       setAcceptedOrder(null);
       setShowOtpModal(false);
       setEnteredOtp('');
-      toast.success("🚀 డెలివరీ విజయవంతం! ఎర్నింగ్స్ రియల్ టైమ్‌లో అప్‌డేట్ అయ్యాయి.");
+      toast.success("🚀 డెలివరీ విజయవంతం!");
     }
   };
 
   const generateAndDownloadPDF = () => {
-    const filteredList = deliveryHistory.filter(h => historyFilter === 'all' || (historyFilter === 'completed' && h.status?.includes('COMPLETED')) || (historyFilter === 'accepted' && h.status?.includes('ACCEPTED')));
-    const totalFilteredEarnings = filteredList.reduce((acc, curr) => acc + (curr.earnings || 0), 0);
-
-    const reportContent = `
-    =====================================
-            FOODIEE DELIVERY REPORT
-    =====================================
-    Partner Name : ${partnerProfile.fullName}
-    Mobile       : ${partnerProfile.mobile}
-    Filter Mode  : ${historyFilter.toUpperCase()}
-    Total Orders : ${filteredList.length}
-    Total Earnings: Rs. ${totalFilteredEarnings}
-    -------------------------------------
-    [Verified Digital Payout Receipt]
-    `;
-
+    const reportContent = `=====================================\n        FOODIEE DELIVERY REPORT\n=====================================\nPartner Name : ${partnerProfile.fullName}\nMobile       : ${partnerProfile.mobile}\nTotal Orders : ${deliveryHistory.length}\nTotal Earnings: Rs. ${todaysEarnings}\n-------------------------------------\n[Verified Digital Payout Receipt]`;
     const blob = new Blob([reportContent], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Foodiee_Earnings_${historyFilter.toUpperCase()}.txt`;
+    link.download = `Foodiee_Earnings_Report.txt`;
     link.click();
     toast.success(`📥 PDF Report downloaded successfully!`);
   };
@@ -897,7 +750,7 @@ export default function DeliveryDashboard() {
               </div>
 
               <div className="flex gap-2 pt-2">
-                <button onClick={() => { toast.success(`📞 Calling customer ${selectedOrderDetails.customerMobile || '9123456789'}...`); }} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-black text-xs shadow flex items-center justify-center gap-1.5 cursor-pointer">
+                <button onClick={() => { toast.success(`📞 Calling customer...`); }} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-black text-xs shadow flex items-center justify-center gap-1.5 cursor-pointer">
                   <Phone size={14} /> Call Customer
                 </button>
                 <button onClick={() => setSelectedOrderDetails(null)} className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-3 rounded-2xl font-bold text-xs cursor-pointer">
@@ -976,14 +829,13 @@ export default function DeliveryDashboard() {
                     <p>🛣️ <b>Distance:</b> <span className="text-amber-300 font-bold">{distance.toFixed(1)} km</span></p>
                     <p className="text-emerald-400 font-bold text-sm">
                       💳 <b>Delivery Fee:</b> ₹ {calculatedFee} 
-                      {isRainSurgeActive && <span className="text-xs text-blue-400 block">🌧️ Includes Rain Surge Bonus!</span>}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex gap-2 pt-1">
                   <button onClick={() => acceptOrder({ ...incomingOrder, deliveryFee: calculatedFee })} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-black text-xs shadow-md cursor-pointer">
-                    {acceptedOrder ? 'Batch / Queue Order 📦' : 'Accept Order 🚀'}
+                    Accept Order 🚀
                   </button>
                   <button onClick={() => { if(audioRef.current){audioRef.current.pause(); audioRef.current=null;} setIncomingOrder(null); }} className="bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 px-4 py-3 rounded-xl font-bold text-xs cursor-pointer">
                     Decline ❌
@@ -1023,12 +875,6 @@ export default function DeliveryDashboard() {
         {!isLoggedIn ? (
           <div className="flex flex-col flex-1 w-full h-full bg-slate-950 items-center justify-center p-6 relative overflow-hidden">
             <div className="absolute w-[300px] h-[300px] bg-orange-500/10 rounded-full blur-3xl animate-pulse pointer-events-none"></div>
-            <div className="absolute w-[200px] h-[200px] bg-amber-500/10 rounded-full blur-2xl animate-ping pointer-events-none"></div>
-
-            <div className="absolute top-10 bg-slate-900/80 backdrop-blur-md border border-slate-800 px-4 py-1.5 rounded-full shadow-xl flex items-center gap-2 z-10">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-300">Delivery Fleet Live</span>
-            </div>
 
             <div className="w-full max-w-[360px] bg-slate-900/70 backdrop-blur-3xl rounded-[40px] p-8 shadow-2xl border border-white/10 space-y-6 relative z-10 overflow-y-auto max-h-[90vh]">
               
@@ -1051,6 +897,11 @@ export default function DeliveryDashboard() {
                         <span className="bg-slate-800 text-amber-400 px-3 py-3 font-black text-xs border-r border-slate-700">+91</span>
                         <input type="tel" maxLength="10" value={regMobile} onChange={(e) => setRegMobile(e.target.value.replace(/\D/g, ''))} placeholder="10-digit mobile" className="w-full bg-transparent p-3 font-bold text-white outline-none text-xs" required />
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Password</label>
+                      <input type="password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} placeholder="Create password" className="w-full bg-slate-950 border border-slate-700 p-3 rounded-2xl text-xs font-bold text-white outline-none" required />
                     </div>
 
                     <div>
@@ -1078,105 +929,69 @@ export default function DeliveryDashboard() {
                     </button>
                   </div>
                 </div>
+              ) : currentView === 'forgot' ? (
+                <div className="space-y-4 animate-fadeIn">
+                  <div className="text-center space-y-2">
+                    <h2 className="text-2xl font-black text-amber-400">Reset Password</h2>
+                    <p className="text-xs text-slate-400">Enter your mobile number and set a new password.</p>
+                  </div>
+                  <form onSubmit={handleForgotPassword} className="space-y-4 text-xs">
+                    <input type="tel" maxLength="10" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Registered Mobile Number" className="w-full bg-slate-950 border border-slate-800 p-3.5 rounded-2xl font-bold outline-none text-white" required />
+                    <input type="password" value={newPasswordInput} onChange={(e) => setNewPasswordInput(e.target.value)} placeholder="New Password" className="w-full bg-slate-950 border border-slate-800 p-3.5 rounded-2xl font-bold outline-none text-white" required />
+                    <button type="submit" className="w-full bg-amber-500 text-slate-950 py-3.5 rounded-2xl font-black shadow-lg cursor-pointer">Update Password in DB 🛡️</button>
+                    <div className="text-center pt-2">
+                      <button type="button" onClick={() => setCurrentView('login')} className="text-slate-400 hover:text-white underline font-bold cursor-pointer">Back to Login</button>
+                    </div>
+                  </form>
+                </div>
               ) : (
                 <div className="space-y-4 animate-fadeIn">
                   <div className="text-center space-y-3">
-                    <div className="w-20 h-20 mx-auto rounded-[24px] p-1 bg-gradient-to-tr from-[#fc8019] via-amber-500 to-yellow-400 shadow-xl shadow-orange-500/30 flex items-center justify-center transform hover:scale-105 transition-transform duration-300">
+                    <div className="w-20 h-20 mx-auto rounded-[24px] p-1 bg-gradient-to-tr from-[#fc8019] via-amber-500 to-yellow-400 shadow-xl flex items-center justify-center">
                       <div className="w-full h-full bg-slate-950 rounded-[22px] overflow-hidden flex items-center justify-center">
-                        <img src={logo} alt="Foodiee Logo" className="w-full h-full object-cover" />
+                        <img src={logo} alt="Logo" className="w-full h-full object-cover" />
                       </div>
                     </div>
                     
                     <div className="space-y-1">
-                      <h2 className="text-3xl font-black tracking-tight bg-gradient-to-r from-white via-slate-200 to-amber-400 bg-clip-text text-transparent">
-                        Foodiee<span className="text-[#fc8019]">.</span>
-                      </h2>
+                      <h2 className="text-3xl font-black tracking-tight text-white">Login</h2>
                       <div className="inline-block bg-orange-500/15 border border-orange-500/30 px-3 py-0.5 rounded-full">
-                        <p className="text-[10px] text-amber-400 font-extrabold uppercase tracking-widest">
-                          Delivery Partner Portal
-                        </p>
+                        <p className="text-[10px] text-amber-400 font-extrabold uppercase tracking-widest">Delivery Partner Portal</p>
                       </div>
                     </div>
                   </div>
 
-                  {step === 1 ? (
-                    <form onSubmit={handleSendOtp} className="space-y-4">
-                      <div className="space-y-1.5">
-                        <label className="block text-[10px] font-black text-amber-400 uppercase tracking-widest pl-1">
-                          Partner Mobile Number
-                        </label>
-                        <div className="flex items-center gap-3 bg-slate-950/80 border border-slate-700/80 px-4 py-4 rounded-2xl focus-within:border-[#fc8019] transition-all shadow-inner">
-                          <div className="w-7 h-7 rounded-xl bg-orange-500/20 text-[#fc8019] flex items-center justify-center shrink-0">
-                            <Phone size={14} />
-                          </div>
-                          <input 
-                            type="tel" 
-                            maxLength="10" 
-                            value={phone} 
-                            onChange={(e) => setPhone(e.target.value)} 
-                            placeholder="Enter 10-digit mobile number" 
-                            className="bg-transparent border-none outline-none text-xs w-full font-bold text-white placeholder:text-slate-500" 
-                            required 
-                          />
-                        </div>
+                  <form onSubmit={handlePasswordLogin} className="space-y-4 text-xs">
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-black text-amber-400 uppercase tracking-widest pl-1">Partner Mobile Number</label>
+                      <div className="flex items-center bg-slate-950/80 border border-slate-700 px-4 py-3.5 rounded-2xl">
+                        <Phone size={14} className="text-[#fc8019]" />
+                        <input type="tel" maxLength="10" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))} placeholder="10-digit mobile number" className="bg-transparent border-none outline-none text-xs w-full font-bold text-white placeholder:text-slate-500 px-2" required />
                       </div>
+                    </div>
 
-                      <button 
-                        type="submit" 
-                        className="w-full bg-gradient-to-r from-[#fc8019] via-amber-500 to-yellow-400 text-slate-950 py-4 rounded-2xl font-black text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <span>Get Secure OTP</span>
-                        <ArrowRight size={16} />
+                    <div className="space-y-1.5">
+                      <label className="block text-[10px] font-black text-amber-400 uppercase tracking-widest pl-1">Password</label>
+                      <div className="flex items-center bg-slate-950/80 border border-slate-700 px-4 py-3.5 rounded-2xl">
+                        <Lock size={14} className="text-[#fc8019]" />
+                        <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="Enter password" className="bg-transparent border-none outline-none text-xs w-full font-bold text-white placeholder:text-slate-500 px-2" required />
+                      </div>
+                    </div>
+
+                    <button type="submit" className="w-full bg-gradient-to-r from-[#fc8019] via-amber-500 to-yellow-400 text-slate-950 py-4 rounded-2xl font-black text-xs shadow-xl cursor-pointer mt-2">
+                      Login to Delivery Hub 🚀
+                    </button>
+
+                    {/* DOWNSIDE OPTIONS: Forgot Password & Register New Rider */}
+                    <div className="flex justify-between items-center pt-3 text-[11px] font-bold px-1">
+                      <button type="button" onClick={() => setCurrentView('forgot')} className="text-blue-400 underline cursor-pointer hover:text-blue-300">
+                        Forgot Password?
                       </button>
-
-                      <div className="text-center pt-2">
-                        <button type="button" onClick={() => setCurrentView('register')} className="text-xs text-amber-400 font-bold underline cursor-pointer">
-                          New rider? Register here 📝
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <form onSubmit={handleVerifyOtp} className="space-y-4 animate-fadeIn">
-                      <div className="text-center space-y-1.5 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800">
-                        <p className="text-[11px] text-slate-300 font-bold">Verification code sent to</p>
-                        <p className="text-sm font-black text-[#fc8019] flex items-center justify-center gap-2">
-                          <span>+91 {phone}</span>
-                          <span onClick={() => setStep(1)} className="text-[10px] text-blue-400 underline cursor-pointer">Change</span>
-                        </p>
-                        {generatedOtpHint && (
-                          <div className="inline-block bg-amber-500/20 border border-amber-500/50 px-3 py-1 rounded-xl mt-1">
-                            <p className="text-[10px] text-amber-300 font-bold">Hint OTP: <span className="text-white font-black">{generatedOtpHint}</span></p>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="block text-[10px] font-black text-amber-400 uppercase tracking-widest text-center">
-                          Enter 4-Digit OTP
-                        </label>
-                        <div className="flex items-center justify-center bg-slate-950/80 border border-slate-700/80 px-4 py-3.5 rounded-2xl shadow-inner">
-                          <input 
-                            type="text" 
-                            maxLength="4" 
-                            value={otpInput} 
-                            onChange={(e) => setOtpInput(e.target.value)} 
-                            placeholder="----" 
-                            className="bg-transparent border-none outline-none text-xl w-full font-black text-white tracking-[0.5em] text-center placeholder:tracking-normal" 
-                            required 
-                            autoFocus
-                          />
-                        </div>
-                      </div>
-
-                      <button 
-                        type="submit" 
-                        className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 text-white py-4 rounded-2xl font-black text-xs shadow-xl flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <span>Verify & Start Shift</span>
-                        <CheckCircle2 size={16} />
+                      <button type="button" onClick={() => setCurrentView('register')} className="text-emerald-400 underline cursor-pointer hover:text-emerald-300">
+                        Register New Rider 🛵
                       </button>
-                    </form>
-                  )}
+                    </div>
+                  </form>
                 </div>
               )}
 
@@ -1225,24 +1040,6 @@ export default function DeliveryDashboard() {
                     </button>
                   </div>
 
-                  <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 text-white space-y-2">
-                    <p className="text-[9px] text-slate-400 uppercase font-bold">Total Orders Placed</p>
-                    <h3 className="text-2xl font-black text-amber-400">{customerOrders.length}</h3>
-                    
-                    <div className="space-y-1.5 pt-2">
-                      {customerOrders.length === 0 ? (
-                        <p className="text-xs text-slate-500">No orders placed yet. Start ordering! 🍔</p>
-                      ) : (
-                        customerOrders.map((ord, idx) => (
-                          <div key={idx} className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs flex justify-between">
-                            <span>Order #{ord.id || ord.orderId}</span>
-                            <span className="text-emerald-400 font-bold">₹{ord.totalAmount}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-
                   <div className="grid grid-cols-3 gap-2">
                     <div className="bg-amber-500/15 p-3 rounded-2xl border border-amber-500/40 shadow">
                       <p className="text-[8px] text-amber-300 font-bold uppercase">Total Earnings</p>
@@ -1258,22 +1055,9 @@ export default function DeliveryDashboard() {
                     </div>
                   </div>
 
-                  <button onClick={() => setShowInstantPayoutModal(true)} className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white py-3 rounded-2xl font-black text-xs shadow-lg flex items-center justify-center gap-2 cursor-pointer transition">
+                  <button onClick={() => setShowInstantPayoutModal(true)} className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 text-white py-3 rounded-2xl font-black text-xs shadow-lg flex items-center justify-center gap-2 cursor-pointer transition">
                     <Zap size={15} /> Instant UPI Payout (Withdraw ₹{todaysEarnings}) 💸
                   </button>
-
-                  {batchQueue.length > 0 && (
-                    <div className="bg-gradient-to-r from-amber-600/20 to-orange-600/20 border border-amber-500/50 p-3.5 rounded-2xl flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Package size={18} className="text-amber-400 animate-bounce" />
-                        <div>
-                          <p className="text-xs font-black text-amber-300">Batched Orders in Queue ({batchQueue.length})</p>
-                          <p className="text-[10px] text-slate-300">Will load automatically upon delivery completion.</p>
-                        </div>
-                      </div>
-                      <span className="bg-amber-500 text-slate-950 px-2.5 py-1 rounded-xl text-[10px] font-black">Ready</span>
-                    </div>
-                  )}
 
                   <div className="space-y-3">
                     <h1 className="text-xs font-black uppercase text-slate-400">Active Delivery & Route Map</h1>
@@ -1292,18 +1076,6 @@ export default function DeliveryDashboard() {
                           <span className="text-emerald-400 text-sm">Fee: ₹ {acceptedOrder.deliveryFee || 20}</span>
                         </div>
 
-                        <button 
-                          onClick={() => { setShowOrderChat(true); setUnreadChatCount(0); }} 
-                          className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white py-2.5 rounded-xl font-black text-xs shadow flex items-center justify-center gap-2 cursor-pointer relative"
-                        >
-                          <MessageSquare size={15} /> Open Live Chat for {acceptedOrder.orderId} 💬
-                          {unreadChatCount > 0 && (
-                            <span className="absolute right-3 bg-red-600 text-white font-black text-[10px] px-2 py-0.5 rounded-full animate-bounce">
-                              {unreadChatCount} New
-                            </span>
-                          )}
-                        </button>
-
                         <div className="w-full h-56 rounded-xl overflow-hidden relative border border-slate-700">
                           <MapContainer center={[acceptedOrder.shopLat, acceptedOrder.shopLng]} zoom={13} zoomControl={false} className="w-full h-full z-10">
                             <MapUpdater center={[acceptedOrder.shopLat, acceptedOrder.shopLng]} />
@@ -1321,20 +1093,12 @@ export default function DeliveryDashboard() {
 
                             <Polyline positions={[[acceptedOrder.shopLat, acceptedOrder.shopLng], partnerPos, [acceptedOrder.customerLat, acceptedOrder.customerLng]]} color="#fc8019" weight={5} dashArray="5, 10" />
                           </MapContainer>
-
-                          <div className="absolute bottom-2 left-2 bg-slate-950/90 backdrop-blur px-3 py-1.5 rounded-xl text-[10px] font-black text-amber-400 border border-slate-700 z-20 shadow-xl flex items-center gap-1.5">
-                            <span>📍 Total Distance:</span>
-                            <span className="text-white">
-                              {calculateDistance(acceptedOrder.shopLat, acceptedOrder.shopLng, acceptedOrder.customerLat, acceptedOrder.customerLng).toFixed(1)} km
-                            </span>
-                          </div>
                         </div>
 
                         <div className="space-y-1.5 bg-slate-900/60 p-3 rounded-2xl border border-slate-700/50 text-slate-300 text-[11px]">
                           <p>🏪 <b>Shop Name:</b> {acceptedOrder.shopName}</p>
                           <p>📍 <b>Delivery Location:</b> {acceptedOrder.deliveryAddress}</p>
                           <p>👤 <b>Customer Name:</b> {acceptedOrder.customerName} ({acceptedOrder.customerMobile})</p>
-                          <p className="text-amber-300">🛍️ <b>Items:</b> {acceptedOrder.items}</p>
                         </div>
 
                         <div className="pt-2 border-t border-slate-700">
@@ -1369,59 +1133,24 @@ export default function DeliveryDashboard() {
                     </button>
                   </div>
 
-                  <div className="flex gap-2">
-                    {['all', 'completed', 'accepted'].map(f => (
-                      <button key={f} onClick={() => setHistoryFilter(f)} className={`flex-1 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider border cursor-pointer transition ${historyFilter === f ? 'bg-[#fc8019] text-slate-950 border-amber-400 shadow-md' : 'bg-slate-800 border-slate-700 text-slate-300'}`}>
-                        {f}
-                      </button>
-                    ))}
-                  </div>
-
                   <div className="space-y-2.5">
-                    {filteredHistoryList.length === 0 ? (
+                    {deliveryHistory.length === 0 ? (
                       <div className="text-center py-16 text-slate-500 text-xs bg-slate-800/40 rounded-2xl border border-slate-800">
                         📭 No orders found in history.
                       </div>
                     ) : (
-                      filteredHistoryList.map((hist, i) => {
-                        const displayId = hist.orderId || hist.id || `#ORD-${i}`;
-                        const displayShop = hist.shopName || hist.shop || 'Local Store';
-                        const displayEarnings = hist.deliveryFee !== undefined ? hist.deliveryFee : (hist.earnings || 20);
-                        const displayStatus = hist.status || 'DELIVERED';
-                        const displayType = hist.paymentMethod || hist.type || 'COD';
-
-                        return (
-                          <div 
-                            key={i} 
-                            onClick={() => setSelectedOrderDetails({
-                              ...hist,
-                              id: displayId,
-                              shop: displayShop,
-                              earnings: displayEarnings,
-                              status: displayStatus,
-                              type: displayType
-                            })}
-                            className="bg-slate-800/90 border border-slate-700/80 p-4 rounded-2xl text-xs space-y-1.5 shadow cursor-pointer hover:border-[#fc8019] transition-all transform hover:scale-[1.01]"
-                          >
-                            <div className="flex justify-between font-black items-center">
-                              <span className="text-amber-400">Order #{displayId} • <span className="text-white">{displayShop}</span></span>
-                              <span className="text-emerald-400 text-sm font-black">+ ₹ {displayEarnings} <span className="text-[10px] text-slate-400 font-normal">({displayType})</span></span>
-                            </div>
-
-                            <div className="flex justify-between text-[11px] text-slate-300 font-medium pt-1">
-                              <span className="truncate max-w-[200px]">🛍️ {hist.items || 'Food / Items'}</span>
-                              <span className="text-amber-400 font-bold uppercase">{displayStatus}</span>
-                            </div>
-
-                            <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 border-t border-slate-700/60 mt-1">
-                              <span>{hist.orderTime ? new Date(hist.orderTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (hist.date || 'Recent')}</span>
-                              <span className="text-[#fc8019] font-bold flex items-center gap-1">
-                                <Eye size={12} /> Tap to view details 🔍
-                              </span>
-                            </div>
+                      deliveryHistory.map((hist, i) => (
+                        <div key={i} className="bg-slate-800/90 border border-slate-700/80 p-4 rounded-2xl text-xs space-y-1.5 shadow">
+                          <div className="flex justify-between font-black items-center">
+                            <span className="text-amber-400">Order #{hist.orderId || hist.id}</span>
+                            <span className="text-emerald-400 text-sm font-black">+ ₹ {hist.deliveryFee || hist.earnings || 20}</span>
                           </div>
-                        );
-                      })
+                          <div className="flex justify-between text-[11px] text-slate-300 font-medium">
+                            <span>🛍️ {hist.shopName || hist.shop || 'Store'}</span>
+                            <span className="text-amber-400 font-bold uppercase">{hist.status || 'COMPLETED'}</span>
+                          </div>
+                        </div>
+                      ))
                     )}
                   </div>
                 </div>
@@ -1429,248 +1158,13 @@ export default function DeliveryDashboard() {
 
               {activeTab === 'profile' && (
                 <div className="space-y-3.5 text-xs pb-6">
-                  
-                  <div className="bg-gradient-to-r from-orange-600/20 via-amber-600/20 to-yellow-600/20 border border-amber-500/50 p-4 rounded-2xl space-y-3 shadow-xl">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-black text-amber-400 uppercase text-[11px] flex items-center gap-1.5">
-                        <Users size={15} /> Referral & Earn Bonus
-                      </h4>
-                      <span className="bg-amber-500 text-slate-950 px-2 py-0.5 rounded-full text-[9px] font-black">+₹50 / Friend</span>
-                    </div>
-                    <p className="text-[10px] text-slate-300">Invite friends to Foodiee Fleet and earn bonus on their first 5 deliveries!</p>
-                    
-                    <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
-                      <div>
-                        <p className="text-[8px] text-slate-400 uppercase font-bold">Your Referral Code</p>
-                        <p className="text-xs font-black text-amber-400 tracking-widest mt-0.5">{referralCode}</p>
-                      </div>
-                      <div className="flex gap-1.5">
-                        <button 
-                          onClick={() => {
-                            navigator.clipboard.writeText(`Join Foodiee Delivery Fleet using my referral code: ${referralCode}. Download App now!`);
-                            toast.success("📋 Referral message copied!");
-                          }} 
-                          className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-xl font-bold text-[10px] cursor-pointer"
-                        >
-                          Copy
-                        </button>
-                        
-                        <a 
-                          href={`https://wa.me/?text=${encodeURIComponent(`🚀 Join Foodiee Delivery Fleet and start earning daily! Use my referral code: *${referralCode}* when signing up. Download now!`)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl font-black text-[10px] flex items-center gap-1 shadow cursor-pointer"
-                        >
-                          <Share2 size={12} /> WhatsApp
-                        </a>
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between text-[10px] text-slate-300 pt-1">
-                      <span>Friends Referred: <b>{referredCount}</b></span>
-                      <span>Total Referral Bonus: <b className="text-emerald-400">₹{referralEarnings}</b></span>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl space-y-3 shadow">
-                    <h4 className="font-black text-amber-400 uppercase text-[11px] flex items-center gap-1.5">
-                      <Globe size={14} /> Voice Navigation Language (వాయిస్ గైడెన్స్)
-                    </h4>
-                    <p className="text-[10px] text-slate-400">Choose voice assistant language for live order alerts & updates:</p>
-                    
-                    <div className="grid grid-cols-2 gap-2">
-                      <button 
-                        onClick={() => {
-                          setVoiceLanguage('te-IN');
-                          toast.success("🗣️ Telugu Voice Assistant Activated");
-                          speakText("తెలుగు వాయిస్ అసిస్టెంట్ ఆన్ చేయబడింది", "Telugu voice assistant activated");
-                        }} 
-                        className={`py-2.5 rounded-xl font-bold text-xs border cursor-pointer ${voiceLanguage === 'te-IN' ? 'bg-[#fc8019] text-slate-950 border-amber-400 font-black' : 'bg-slate-900 border-slate-700 text-slate-300'}`}
-                      >
-                        🇮🇳 తెలుగు (Telugu)
-                      </button>
-                      <button 
-                        onClick={() => {
-                          setVoiceLanguage('en-US');
-                          toast.success("🗣️ English Voice Assistant Activated");
-                          speakText("English voice assistant activated", "English voice assistant activated");
-                        }} 
-                        className={`py-2.5 rounded-xl font-bold text-xs border cursor-pointer ${voiceLanguage === 'en-US' ? 'bg-[#fc8019] text-slate-950 border-amber-400 font-black' : 'bg-slate-900 border-slate-700 text-slate-300'}`}
-                      >
-                        🇺🇸 English
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 border border-amber-500/40 p-4 rounded-2xl space-y-3 shadow-xl">
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                      <h4 className="font-black text-amber-400 uppercase text-[11px] flex items-center gap-1.5">
-                        <TrendingUp size={14} /> Performance Analytics
-                      </h4>
-                      <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full text-[9px] font-bold">4.9 ⭐ Rating</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                        <p className="text-[9px] text-slate-400 uppercase font-bold">Total Orders</p>
-                        <p className="text-sm font-black text-white mt-0.5">{deliveryHistory.length}</p>
-                      </div>
-                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                        <p className="text-[9px] text-slate-400 uppercase font-bold">Hours Online</p>
-                        <p className="text-sm font-black text-white mt-0.5">{(shiftSeconds / 3600).toFixed(1)}h</p>
-                      </div>
-                      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                        <p className="text-[9px] text-slate-400 uppercase font-bold">Completion</p>
-                        <p className="text-sm font-black text-emerald-400 mt-0.5">99.8%</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl space-y-3 shadow">
-                    <h4 className="font-black text-amber-400 uppercase text-[11px] flex items-center gap-1.5">
-                      <Volume2 size={14} /> Order Alert Sound Settings
-                    </h4>
-                    <p className="text-[10px] text-slate-400">Select your preferred alert sound for incoming orders:</p>
-                    
-                    <div className="space-y-2">
-                      {ringtones.map((ring) => (
-                        <div 
-                          key={ring.id}
-                          onClick={() => {
-                            setSelectedRinger(ring.id);
-                            const preview = new Audio(ring.url);
-                            preview.play();
-                            toast.success(`Selected: ${ring.name}`);
-                          }}
-                          className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${
-                            selectedRinger === ring.id 
-                              ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-black' 
-                              : 'bg-slate-900 border-slate-700 text-slate-300'
-                          }`}
-                        >
-                          <span className="text-xs">{ring.name}</span>
-                          {selectedRinger === ring.id && <span className="text-xs">✅ Active</span>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
                   <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl space-y-2 shadow">
-                    <div className="flex items-center justify-between border-b border-slate-700 pb-3">
-                      <h4 className="font-black text-amber-400 uppercase text-[11px]">Delivery Person Details</h4>
-                      <button onClick={() => setIsEditingPersonal(!isEditingPersonal)} className="bg-[#fc8019] text-slate-950 px-3 py-1.5 rounded-xl font-black text-[10px] cursor-pointer">
-                        {isEditingPersonal ? 'Cancel' : 'Edit ✍️'}
-                      </button>
+                    <h4 className="font-black text-amber-400 uppercase text-[11px]">Delivery Person Details</h4>
+                    <div className="space-y-1 text-[11px] text-slate-300 pt-1">
+                      <p><b>Name:</b> {partnerProfile.fullName}</p>
+                      <p><b>Mobile:</b> {partnerProfile.mobile}</p>
+                      <p><b>Vehicle:</b> {partnerProfile.vehicleType} ({partnerProfile.bikeNumber})</p>
                     </div>
-
-                    {!isEditingPersonal ? (
-                      <div className="space-y-1 text-[11px] text-slate-300 pt-1">
-                        <p><b>Name:</b> {partnerProfile.fullName}</p>
-                        <p><b>Mobile:</b> {partnerProfile.mobile}</p>
-                        <p><b>Email:</b> {partnerProfile.email}</p>
-                        <p><b>Vehicle:</b> {partnerProfile.vehicleType} ({partnerProfile.bikeNumber})</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2 pt-2">
-                        <input type="text" value={partnerProfile.fullName} onChange={(e) => setPartnerProfile({...partnerProfile, fullName: e.target.value})} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-white outline-none" placeholder="Full Name" />
-                        <input type="text" value={partnerProfile.email} onChange={(e) => setPartnerProfile({...partnerProfile, email: e.target.value})} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-white outline-none" placeholder="Email" />
-                        <input type="text" value={partnerProfile.bikeNumber} onChange={(e) => setPartnerProfile({...partnerProfile, bikeNumber: e.target.value})} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-white outline-none" placeholder="Bike Number" />
-                        <button onClick={() => handleSaveProfileWithFiles('Personal Details')} className="w-full bg-emerald-600 text-white py-2 rounded-xl font-black text-xs mt-1 cursor-pointer">Save Personal Details 💾</button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl space-y-2 shadow">
-                    <div className="flex items-center justify-between border-b border-slate-700 pb-3">
-                      <h4 className="font-black text-amber-400 uppercase text-[11px]">KYC & Vehicle Documents</h4>
-                      <button onClick={() => setIsEditingKyc(!isEditingKyc)} className="bg-[#fc8019] text-slate-950 px-3 py-1.5 rounded-xl font-black text-[10px] cursor-pointer">
-                        {isEditingKyc ? 'Cancel' : 'Edit / Upload 📁'}
-                      </button>
-                    </div>
-
-                    {!isEditingKyc ? (
-                      <div className="space-y-1 text-[11px] text-slate-300 pt-1">
-                        <p><b>Aadhaar No:</b> [Aadhaar Redacted]</p>
-                        <p><b>License No:</b> {partnerProfile.licenseNo}</p>
-                        <p><b>PAN No:</b> {partnerProfile.panNo}</p>
-                        <p><b>KYC Status:</b> <span className="text-emerald-400 font-bold">{partnerProfile.kycStatus}</span></p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2.5 pt-2 text-[11px]">
-                        <div>
-                          <label className="text-[10px] text-slate-400 font-bold">Aadhaar Card Number</label>
-                          <input type="text" value={partnerProfile.aadhaarNo} onChange={(e) => setPartnerProfile({...partnerProfile, aadhaarNo: e.target.value})} placeholder="1234 5678 9012" className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-white outline-none" />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-slate-400 font-bold">Upload Aadhaar Card</label>
-                          <input type="file" onChange={(e) => setSelectedAadhaarFile(e.target.files[0])} className="w-full text-[10px] bg-slate-900 border border-slate-700 p-1.5 rounded-xl text-slate-300 file:bg-amber-500 file:text-slate-950 file:border-0 file:rounded file:px-2 cursor-pointer" />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-slate-400 font-bold">Driving License Number</label>
-                          <input type="text" value={partnerProfile.licenseNo} onChange={(e) => setPartnerProfile({...partnerProfile, licenseNo: e.target.value})} placeholder="DL-12345678" className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-white outline-none" />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-slate-400 font-bold">Upload Driving License</label>
-                          <input type="file" onChange={(e) => setSelectedLicenseFile(e.target.files[0])} className="w-full text-[10px] bg-slate-900 border border-slate-700 p-1.5 rounded-xl text-slate-300 file:bg-amber-500 file:text-slate-950 file:border-0 file:rounded file:px-2 cursor-pointer" />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-slate-400 font-bold">PAN Number</label>
-                          <input type="text" value={partnerProfile.panNo} onChange={(e) => setPartnerProfile({...partnerProfile, panNo: e.target.value})} placeholder="ABCDE1234F" className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-white outline-none uppercase" />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-slate-400 font-bold">Upload PAN Card</label>
-                          <input type="file" onChange={(e) => setSelectedPanFile(e.target.files[0])} className="w-full text-[10px] bg-slate-900 border border-slate-700 p-1.5 rounded-xl text-slate-300 file:bg-amber-500 file:text-slate-950 file:border-0 file:rounded file:px-2 cursor-pointer" />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-slate-400 font-bold">Upload Bike Photo / RC</label>
-                          <input type="file" onChange={(e) => setSelectedBikeFile(e.target.files[0])} className="w-full text-[10px] bg-slate-900 border border-slate-700 p-1.5 rounded-xl text-slate-300 file:bg-amber-500 file:text-slate-950 file:border-0 file:rounded file:px-2 cursor-pointer" />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-slate-400 font-bold">Upload Driver Photo</label>
-                          <input type="file" onChange={(e) => setSelectedDriverFile(e.target.files[0])} className="w-full text-[10px] bg-slate-900 border border-slate-700 p-1.5 rounded-xl text-slate-300 file:bg-amber-500 file:text-slate-950 file:border-0 file:rounded file:px-2 cursor-pointer" />
-                        </div>
-
-                        <button onClick={() => handleSaveProfileWithFiles('KYC Documents')} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-xl font-black text-xs mt-2 cursor-pointer">
-                          Submit All KYC Documents 🚀
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="bg-slate-800 border border-slate-700 p-4 rounded-2xl space-y-2 shadow">
-                    <div className="flex items-center justify-between border-b border-slate-700 pb-3">
-                      <h4 className="font-black text-amber-400 uppercase text-[11px]">Bank & UPI Payout Settings</h4>
-                      <button onClick={() => setIsEditingBank(!isEditingBank)} className="bg-[#fc8019] text-slate-950 px-3 py-1.5 rounded-xl font-black text-[10px] cursor-pointer">
-                        {isEditingBank ? 'Cancel' : 'Edit ✍️'}
-                      </button>
-                    </div>
-
-                    {!isEditingBank ? (
-                      <div className="space-y-1 text-[11px] text-slate-300 pt-1">
-                        <p><b>Account No:</b> {partnerProfile.bankAccount}</p>
-                        <p><b>IFSC Code:</b> {partnerProfile.ifscCode}</p>
-                        <p><b>UPI ID:</b> {partnerProfile.upiId}</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2 pt-2 text-[11px]">
-                        <div>
-                          <label className="text-[10px] text-slate-400 font-bold">Bank Account Number</label>
-                          <input type="text" value={partnerProfile.bankAccount} onChange={(e) => setPartnerProfile({...partnerProfile, bankAccount: e.target.value})} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-white outline-none" placeholder="Account Number" />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-slate-400 font-bold">IFSC Code</label>
-                          <input type="text" value={partnerProfile.ifscCode} onChange={(e) => setPartnerProfile({...partnerProfile, ifscCode: e.target.value})} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-white outline-none uppercase" placeholder="IFSC Code" />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-slate-400 font-bold">UPI ID</label>
-                          <input type="text" value={partnerProfile.upiId} onChange={(e) => setPartnerProfile({...partnerProfile, upiId: e.target.value})} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-white outline-none" placeholder="UPI ID (e.g. partner@ybl)" />
-                        </div>
-                        <button onClick={() => handleSaveProfileWithFiles('Bank & UPI Details')} className="w-full bg-emerald-600 text-white py-2 rounded-xl font-black text-xs mt-1 cursor-pointer">Save Bank Details 💾</button>
-                      </div>
-                    )}
                   </div>
 
                   <div className="pt-2">
