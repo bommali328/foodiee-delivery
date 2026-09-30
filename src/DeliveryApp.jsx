@@ -8,7 +8,8 @@ import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import logo from './assets/logo.png';
 
-// ✅ BASE URL UPDATE (AWS / Localhost)
+// ✅ BASE URL UPDATE (AWS / Localhost)   
+
 const API_BASE_URL = "https://foodiee-backend-env.eba-5d9p6wzb.eu-north-1.elasticbeanstalk.com";
 
 const getBikeIcon = (rotationAngle) => {
