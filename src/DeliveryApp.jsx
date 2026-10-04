@@ -9,8 +9,7 @@ import SockJS from 'sockjs-client';
 import logo from './assets/logo.png';
 
 // ✅ BASE URL UPDATE (AWS / Localhost)   
-
-const API_BASE_URL = "https://foodiee-backend-env.eba-5d9p6wzb.eu-north-1.elasticbeanstalk.com";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "https://api.foodiee.shop";
 
 const getBikeIcon = (rotationAngle) => {
   return new L.DivIcon({
