@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">delivery-panel</string>
-    <string name="title_activity_main">delivery-panel</string>
+    <string name="app_name">fodiee-delivery</string>
+    <string name="title_activity_main">fodiee-delivery</string>
     <string name="package_name">com.foodiee.delivery</string>
     <string name="custom_url_scheme">com.foodiee.delivery</string>
 </resources>

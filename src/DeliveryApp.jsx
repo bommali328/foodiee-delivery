@@ -197,6 +197,7 @@ export default function DeliveryDashboard() {
   const [phone, setPhone] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [enteredOtp, setEnteredOtp] = useState('');
   const [activeTab, setActiveTab] = useState('available');
 
   const [isOnline, setIsOnline] = useState(true);
@@ -222,7 +223,6 @@ export default function DeliveryDashboard() {
 
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [showInstantPayoutModal, setShowInstantPayoutModal] = useState(false);
-  const [enteredOtp, setEnteredOtp] = useState('');
   const [activeOrderId, setActiveOrderId] = useState(null);
   const [showSosModal, setShowSosModal] = useState(false);
 
@@ -288,7 +288,6 @@ export default function DeliveryDashboard() {
     }
   };
 
-  // ✅ Admin Chat Live WebSocket Sync & Unread Tracking (Updated)
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -324,7 +323,6 @@ export default function DeliveryDashboard() {
             playNotificationSound(selectedNotificationSound || 'bell');
           });
 
-          // ✅ Admin-Partner Chat Live Sync Subscription with Clean Number
           stompClient.subscribe(`/topic/chat/admin-partner/${partnerMob}`, (message) => {
             const receivedMessage = JSON.parse(message.body);
             
@@ -365,7 +363,6 @@ export default function DeliveryDashboard() {
     };
   }, [isLoggedIn, partnerProfile.mobile, selectedNotificationSound]);
 
-  // ✅ Order Chat Live WebSocket Sync (Customer & Shop to Delivery Partner)
   useEffect(() => {
     if (!showOrderChat || !acceptedOrder) return;
 
@@ -627,26 +624,30 @@ export default function DeliveryDashboard() {
     }
   };
 
-  const handleForgotPassword = async (e) => {
-    e.preventDefault();
-    if (!phone || !newPasswordInput) {
-      toast.error('❌ Enter mobile number and new password');
+  const handleForgotPassword = async () => {
+    if (!phone || phone.length < 10) {
+      toast.error('❌ Please enter a valid 10-digit mobile number');
       return;
     }
-    const fullMobile = phone.startsWith('+91') ? phone : `+91${phone}`;
+    const cleanMobile = phone.replace('+91', '').trim();
+
     try {
-      await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
+      const res = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mobile: fullMobile, password: newPasswordInput, role: 'partner' }),
+        body: JSON.stringify({ mobile: cleanMobile, role: 'partner' }),
       });
-      toast.success('✓ Password updated successfully!');
-      setCurrentView('login');
-      setPasswordInput('');
-      setNewPasswordInput('');
+      const data = await res.json();
+      if (res.ok && data.status === 'SUCCESS') {
+        toast.success('✓ 4-digit PIN generated for WhatsApp!');
+        if (data.whatsappRedirectUrl) {
+          window.open(data.whatsappRedirectUrl, '_blank');
+        }
+      } else {
+        toast.error(data.error || 'Mobile number not found');
+      }
     } catch (err) {
-      toast.success('✓ Password updated successfully!');
-      setCurrentView('login');
+      toast.error('❌ Network error while requesting PIN');
     }
   };
 
@@ -1186,7 +1187,7 @@ export default function DeliveryDashboard() {
           <div className="flex flex-col flex-1 w-full h-full bg-slate-950 items-center justify-center p-6 relative overflow-hidden">
             <div className="w-full max-w-[360px] bg-slate-900/70 backdrop-blur-3xl rounded-[40px] p-8 shadow-2xl border border-white/10 space-y-6 relative z-10 overflow-y-auto max-h-[90vh]">
               
-              {currentView === 'register' ? (
+              {currentView === 'register' && (
                 <div className="space-y-4 animate-fadeIn">
                   <div className="text-center space-y-2">
                     <h2 className="text-2xl font-black text-amber-400">Rider Registration</h2>
@@ -1216,17 +1217,114 @@ export default function DeliveryDashboard() {
                     <button onClick={() => setCurrentView('login')} className="text-xs text-amber-400 font-bold underline cursor-pointer">Already registered? Login</button>
                   </div>
                 </div>
-              ) : currentView === 'forgot' ? (
+              )}
+
+              {currentView === 'forgot' && (
                 <div className="space-y-4 animate-fadeIn">
-                  <h2 className="text-xl font-black text-amber-400 text-center">Reset Password</h2>
-                  <form onSubmit={handleForgotPassword} className="space-y-4 text-xs">
-                    <input type="tel" maxLength="10" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Mobile Number" className="w-full bg-slate-950 border p-3.5 rounded-2xl text-white outline-none font-bold" required />
-                    <input type="password" value={newPasswordInput} onChange={(e) => setNewPasswordInput(e.target.value)} placeholder="New Password" className="w-full bg-slate-950 border p-3.5 rounded-2xl text-white outline-none font-bold" required />
-                    <button type="submit" className="w-full bg-amber-500 text-slate-950 py-3.5 rounded-2xl font-black cursor-pointer">Update Password</button>
-                    <div className="text-center"><button type="button" onClick={() => setCurrentView('login')} className="text-slate-400 underline">Back to Login</button></div>
+                  <div className="text-center space-y-1 mb-2">
+                    <h2 className="text-2xl font-black text-amber-400">Delivery Reset Password</h2>
+                    <p className="text-[10px] text-slate-400">Follow the steps below to reset your password via WhatsApp.</p>
+                  </div>
+
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!phone || phone.length < 10 || !enteredOtp || !newPasswordInput) {
+                      toast.error('❌ Please fill all fields including the 4-digit PIN!');
+                      return;
+                    }
+                    const cleanMobile = phone.replace('+91', '').trim();
+
+                    try {
+                      const res = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                          mobile: cleanMobile, 
+                          otp: enteredOtp, 
+                          newPassword: newPasswordInput, 
+                          role: 'partner' 
+                        }),
+                      });
+                      const data = await res.json();
+                      if (res.ok && data.status === 'SUCCESS') {
+                        toast.success('✓ Password updated successfully in database!');
+                        setCurrentView('login');
+                        setPhone('');
+                        setEnteredOtp('');
+                        setNewPasswordInput('');
+                      } else {
+                        toast.error(data.error || 'Failed to reset password');
+                      }
+                    } catch (err) {
+                      toast.error('❌ Network error during password reset');
+                    }
+                  }} className="space-y-3.5 text-xs">
+                    
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-black text-amber-400 uppercase tracking-widest pl-1">1. Registered Mobile Number</label>
+                      <input 
+                        type="tel" 
+                        maxLength="10" 
+                        value={phone} 
+                        onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))} 
+                        placeholder="10-digit mobile number" 
+                        className="w-full bg-slate-950 border border-slate-800 p-3 rounded-2xl font-bold outline-none text-white" 
+                        required 
+                      />
+                    </div>
+
+                    <div>
+                      <button 
+                        type="button" 
+                        onClick={handleForgotPassword}
+                        className="w-full bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/40 py-2.5 rounded-xl font-black text-xs shadow cursor-pointer transition"
+                      >
+                        2. Send OTP / Get WhatsApp PIN 💬
+                      </button>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-black text-amber-400 uppercase tracking-widest pl-1">3. Enter 4-Digit PIN</label>
+                      <input 
+                        type="text" 
+                        maxLength="4" 
+                        value={enteredOtp} 
+                        onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, ''))} 
+                        placeholder="1234" 
+                        className="w-full bg-slate-950 border border-slate-800 p-3 rounded-2xl text-center text-base font-black text-amber-400 tracking-[0.4em] outline-none" 
+                        required 
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-black text-amber-400 uppercase tracking-widest pl-1">4. New Password</label>
+                      <input 
+                        type="password" 
+                        value={newPasswordInput} 
+                        onChange={(e) => setNewPasswordInput(e.target.value)} 
+                        placeholder="Enter new password" 
+                        className="w-full bg-slate-950 border border-slate-800 p-3 rounded-2xl font-bold outline-none text-white" 
+                        required 
+                      />
+                    </div>
+
+                    <button 
+                      type="submit" 
+                      className="w-full bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 py-3.5 rounded-2xl font-black shadow-lg cursor-pointer mt-1"
+                    >
+                      5. Submit & Update Password 🔒
+                    </button>
+
+                    <div className="text-center pt-2">
+                      <button type="button" onClick={() => setCurrentView('login')} className="text-slate-400 hover:text-white underline font-bold cursor-pointer">
+                        Back to Login
+                      </button>
+                    </div>
                   </form>
                 </div>
-              ) : (
+              )}
+
+              {currentView === 'login' && (
                 <div className="space-y-4 animate-fadeIn">
                   <div className="text-center space-y-3">
                     <div className="w-20 h-20 mx-auto rounded-[24px] p-1 bg-gradient-to-tr from-[#fc8019] to-amber-400 flex items-center justify-center shadow-xl">
