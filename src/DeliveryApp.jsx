@@ -285,37 +285,6 @@ export default function DeliveryDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  const playNotificationSound = (soundType) => {
-    try {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-
-      if (soundType === 'bell') {
-        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.3);
-      } else if (soundType === 'beep') {
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.15);
-      } else {
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.4);
-      }
-    } catch (e) {
-      console.warn("Audio Context blocked.");
-    }
-  };
-
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -512,7 +481,8 @@ export default function DeliveryDashboard() {
   };
 
  
-   useEffect(() => {
+   // ✅ ఆప్టిమైజ్ చేసిన సింగిల్ ప్రొఫైల్ పోలింగ్ ఎఫెక్ట్ (నెస్టెడ్ ఎర్రర్ తొలగించబడింది)
+  useEffect(() => {
     const fetchPartnerProfileStatus = async () => {
       try {
         const curId = localStorage.getItem('partnerId') || partnerProfile.id || 1;
@@ -522,20 +492,58 @@ export default function DeliveryDashboard() {
           setPartnerProfile(prev => ({
             ...prev,
             ...data,
-            // అడ్మిన్ అప్రూవ్ చేస్తే ఇక్కడ ఆటోమేటిక్‌గా అప్‌డేట్ అవుతుంది
             kycStatus: data.adminApproved ? 'Verified ✅' : 'Pending Verification ⏳'
           }));
         }
-      } catch (err) {}
+      } catch (err) {
+        console.error("Profile poll error", err);
+      }
     };
 
     if (isLoggedIn) {
       fetchPartnerProfileStatus();
-      const interval = setInterval(fetchPartnerProfileStatus, 6000);
+      const interval = setInterval(fetchPartnerProfileStatus, 30000);
       return () => clearInterval(interval);
     }
   }, [isLoggedIn, partnerProfile.id]);
 
+  // ✅ ఆడియో కాంటెక్స్ట్ రెజ్యూమ్‌తో కూడిన నోటిఫికేషన్ సౌండ్ ఫంక్షన్
+  const playNotificationSound = (soundType) => {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      if (soundType === 'bell') {
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.3);
+      } else if (soundType === 'beep') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+      } else {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.4);
+      }
+    } catch (e) {
+      console.warn("Audio Context blocked.");
+    }
+  };
+
+  
 
   useEffect(() => {
     if (!isLoggedIn || !isOnline) return;
