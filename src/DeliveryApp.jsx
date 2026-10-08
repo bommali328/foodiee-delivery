@@ -536,12 +536,6 @@ export default function DeliveryDashboard() {
     }
   }, [isLoggedIn, partnerProfile.id]);
 
-    if (isLoggedIn) {
-      fetchPartnerProfileStatus();
-      const interval = setInterval(fetchPartnerProfileStatus, 6000);
-      return () => clearInterval(interval);
-    }
-  }, [isLoggedIn, partnerProfile.id]);
 
   useEffect(() => {
     if (!isLoggedIn || !isOnline) return;
