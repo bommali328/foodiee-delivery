@@ -511,7 +511,7 @@ export default function DeliveryDashboard() {
     }
   };
 
-  useEffect(() => {
+ 
    useEffect(() => {
     const fetchPartnerProfileStatus = async () => {
       try {
