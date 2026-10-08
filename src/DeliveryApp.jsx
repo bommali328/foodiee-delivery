@@ -257,6 +257,34 @@ export default function DeliveryDashboard() {
     setEditUpi(partnerProfile.upiId);
   }, [partnerProfile]);
 
+
+  // ✅ Optimised KYC polling effect (every 30 seconds to prevent app lag)
+  useEffect(() => {
+    const partnerMobile = localStorage.getItem('partnerMobile');
+    if (!partnerMobile) return;
+
+    const checkKycStatus = async () => {
+      try {
+        const curId = localStorage.getItem('partnerId') || partnerProfile.id || 1;
+        const res = await fetch(`${API_BASE_URL}/api/partner/profile/${curId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setPartnerProfile(prev => ({
+            ...prev,
+            ...data,
+            kycStatus: data.adminApproved ? 'Verified ✅' : 'Pending Verification ⏳'
+          }));
+        }
+      } catch (err) {
+        console.error("KYC poll error", err);
+      }
+    };
+
+    checkKycStatus();
+    const interval = setInterval(checkKycStatus, 30000); 
+    return () => clearInterval(interval);
+  }, []);
+
   const playNotificationSound = (soundType) => {
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -484,6 +512,7 @@ export default function DeliveryDashboard() {
   };
 
   useEffect(() => {
+   useEffect(() => {
     const fetchPartnerProfileStatus = async () => {
       try {
         const curId = localStorage.getItem('partnerId') || partnerProfile.id || 1;
@@ -493,11 +522,19 @@ export default function DeliveryDashboard() {
           setPartnerProfile(prev => ({
             ...prev,
             ...data,
+            // అడ్మిన్ అప్రూవ్ చేస్తే ఇక్కడ ఆటోమేటిక్‌గా అప్‌డేట్ అవుతుంది
             kycStatus: data.adminApproved ? 'Verified ✅' : 'Pending Verification ⏳'
           }));
         }
       } catch (err) {}
     };
+
+    if (isLoggedIn) {
+      fetchPartnerProfileStatus();
+      const interval = setInterval(fetchPartnerProfileStatus, 6000);
+      return () => clearInterval(interval);
+    }
+  }, [isLoggedIn, partnerProfile.id]);
 
     if (isLoggedIn) {
       fetchPartnerProfileStatus();
@@ -1024,26 +1061,47 @@ export default function DeliveryDashboard() {
         )}
 
         {showSosModal && (
-          <div className="absolute inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
-            <div className="bg-slate-900 border-2 border-rose-500 w-full max-w-xs rounded-3xl p-5 shadow-2xl space-y-4 text-center">
-              <div className="w-16 h-16 bg-rose-600 text-white rounded-full flex items-center justify-center mx-auto shadow-lg animate-bounce">
-                <AlertTriangle size={32} />
-              </div>
-              <div>
-                <h3 className="text-xl font-black text-rose-400">Emergency SOS Alert</h3>
-                <p className="text-xs text-slate-300 mt-1">Are you facing an emergency? Tap below to alert Foodiee Safety Control & Ichapuram Support.</p>
-              </div>
-              <div className="space-y-2">
-                <button onClick={() => { toast.error('🚨 SOS Alert Sent Successfully to Foodiee Safety Control!'); setShowSosModal(false); }} className="w-full bg-rose-600 hover:bg-rose-500 text-white py-3 rounded-xl font-black text-xs shadow cursor-pointer">
-                  🚨 Send Emergency SOS Now
-                </button>
-                <button onClick={() => setShowSosModal(false)} className="w-full bg-slate-800 text-slate-300 py-2.5 rounded-xl font-bold text-xs cursor-pointer">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+  <div className="absolute inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+    <div className="bg-slate-900 border-2 border-rose-500 w-full max-w-xs rounded-3xl p-5 shadow-2xl space-y-4 text-center">
+      <div className="w-16 h-16 bg-rose-600 text-white rounded-full flex items-center justify-center mx-auto shadow-lg animate-bounce">
+        <AlertTriangle size={32} />
+      </div>
+      <div>
+        <h3 className="text-xl font-black text-rose-400">Emergency SOS Alert</h3>
+        <p className="text-xs text-slate-300 mt-1">Are you facing an emergency? Tap below to alert Foodiee Safety Control & Ichapuram Support.</p>
+      </div>
+      <div className="space-y-2">
+        {/* 👇 ఇక్కడ API కాల్ యాడ్ చేయాలి */}
+        <button onClick={async () => {
+          try {
+            const payload = {
+              senderMobile: partnerProfile.mobile || localStorage.getItem('partnerMobile'),
+              senderRole: 'Delivery Partner',
+              timestamp: new Date().toISOString(),
+              message: '🚨 EMERGENCY SOS ALERT from Rider! Immediate assistance required!'
+            };
+            
+            await fetch(`${API_BASE_URL}/api/admin/sos-alert`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            
+            toast.error('🚨 SOS Alert Sent Successfully to Admin Control!');
+          } catch (err) {
+            toast.error('❌ Failed to send SOS alert');
+          }
+          setShowSosModal(false);
+        }} className="w-full bg-rose-600 hover:bg-rose-500 text-white py-3 rounded-xl font-black text-xs shadow cursor-pointer">
+          🚨 Send Emergency SOS Now
+        </button>
+        <button onClick={() => setShowSosModal(false)} className="w-full bg-slate-800 text-slate-300 py-2.5 rounded-xl font-bold text-xs cursor-pointer">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
         {showOrderChat && acceptedOrder && (
           <div className="absolute inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
