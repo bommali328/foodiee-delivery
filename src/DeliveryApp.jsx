@@ -293,15 +293,33 @@ export default function DeliveryDashboard() {
     const curPartnerId = localStorage.getItem('partnerId') || partnerProfile.id || 1;
     if (!partnerMob) return;
 
+    // ✅ 1. ఇన్‌స్టెంట్ బ్యాక్‌గ్రౌండ్ సింక్ కోసం ఆటో-పోలింగ్ (ప్రతి 4 సెకన్లకు ఒకసారి ఆర్డర్స్ చెక్ చేస్తుంది)
+    const fetchActiveOrders = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/orders/pending-delivery/${curPartnerId}`);
+        if (res.ok) {
+          const orders = await res.json();
+          if (Array.isArray(orders) && orders.length > 0 && !incomingOrder && !acceptedOrder) {
+            setIncomingOrder(orders[0]);
+            playNotificationSound(selectedNotificationSound || 'bell');
+          }
+        }
+      } catch (err) {}
+    };
+
+    const pollingInterval = setInterval(fetchActiveOrders, 4000);
+
+    // 2. చాట్ హిస్టరీ ఫెచ్
     fetch(`${API_BASE_URL}/api/admin-chat/history/${partnerMob}`)
       .then(res => res.ok ? res.json() : [])
       .then(data => { if (Array.isArray(data)) setAdminChatMessages(data); })
       .catch(() => {});
 
+    // 3. WebSocket రియల్-టైమ్ సబ్‌స్క్రిప్షన్స్
     const socket = new SockJS(`${API_BASE_URL}/ws-foodiee`);
     const stompClient = new Client({
       webSocketFactory: () => socket,
-      reconnectDelay: 5000,
+      reconnectDelay: 3000,
       onConnect: () => {
         stompClient.subscribe(`/topic/delivery/orders/${curPartnerId}`, (message) => {
           const newOrder = JSON.parse(message.body);
@@ -356,9 +374,11 @@ export default function DeliveryDashboard() {
     adminStompClientRef.current = stompClient;
 
     return () => {
+      clearInterval(pollingInterval);
       if (adminStompClientRef.current) adminStompClientRef.current.deactivate();
     };
   }, [isLoggedIn, partnerProfile.mobile, selectedNotificationSound]);
+}
 
   useEffect(() => {
     if (!showOrderChat || !acceptedOrder) return;
