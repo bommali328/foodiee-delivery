@@ -378,7 +378,7 @@ export default function DeliveryDashboard() {
       if (adminStompClientRef.current) adminStompClientRef.current.deactivate();
     };
   }, [isLoggedIn, partnerProfile.mobile, selectedNotificationSound]);
-}
+
 
   useEffect(() => {
     if (!showOrderChat || !acceptedOrder) return;
@@ -786,6 +786,9 @@ export default function DeliveryDashboard() {
 
   const acceptOrder = async (orderObj) => {
     if (acceptedOrder) return;
+
+    // 🔴 1. వెంటనే ఇక్కడ incomingOrder ని null చేయాలి (స్క్రీన్ నుండి పాప్‌అప్ వెళ్ళిపోతుంది)
+    setIncomingOrder(null);
 
     try {
       const realId = orderObj.id || orderObj.orderId || 1;
