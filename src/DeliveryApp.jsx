@@ -293,8 +293,11 @@ export default function DeliveryDashboard() {
     const curPartnerId = localStorage.getItem('partnerId') || partnerProfile.id || 1;
     if (!partnerMob) return;
 
-    // ✅ 1. ఇన్‌స్టెంట్ బ్యాక్‌గ్రౌండ్ సింక్ కోసం ఆటో-పోలింగ్ (ప్రతి 4 సెకన్లకు ఒకసారి ఆర్డర్స్ చెక్ చేస్తుంది)
+    // ✅ 1. ఇన్‌స్టెంట్ బ్యాక్‌గ్రౌండ్ సింక్ కోసం ఆటో-పోలింగ్
     const fetchActiveOrders = async () => {
+      // 🔴 ఇక్కడ ఈ కండిషన్ పెట్టడం వల్ల incomingOrder లేదా acceptedOrder ఉన్నప్పుడు పోలింగ్ పూర్తిగా ఆగిపోతుంది
+      if (incomingOrder || acceptedOrder) return;
+
       try {
         const res = await fetch(`${API_BASE_URL}/api/orders/pending-delivery/${curPartnerId}`);
         if (res.ok) {
@@ -377,7 +380,7 @@ export default function DeliveryDashboard() {
       clearInterval(pollingInterval);
       if (adminStompClientRef.current) adminStompClientRef.current.deactivate();
     };
-  }, [isLoggedIn, partnerProfile.mobile, selectedNotificationSound]);
+  }, [isLoggedIn, partnerProfile.mobile, selectedNotificationSound, incomingOrder, acceptedOrder]);
 
 
   useEffect(() => {
