@@ -1453,18 +1453,19 @@ export default function DeliveryDashboard() {
                 </div>
               )}
 
-              {currentView === 'login' && (
-                <div className="space-y-4 animate-fadeIn">
-                  <div className="text-center space-y-3">
-                    <div className="w-20 h-20 mx-auto rounded-[24px] p-1 bg-gradient-to-tr from-[#fc8019] to-amber-400 flex items-center justify-center shadow-xl">
-                      <img src={logo} alt="Logo" className="w-full h-full object-cover rounded-[22px]" />
+             {currentView === 'login' && (
+                <div className="space-y-3 animate-fadeIn">
+                  <div className="text-center space-y-2">
+                    {/* 👇 ఇక్కడ w-20 h-20 నుండి w-14 h-14 కి తగ్గించండి ताकि లోగో చిన్నదిగా నీట్‌గా కనిపిస్తుంది */}
+                    <div className="w-14 h-14 mx-auto rounded-[20px] p-1 bg-gradient-to-tr from-[#fc8019] to-amber-400 flex items-center justify-center shadow-xl">
+                      <img src={logo} alt="Logo" className="w-full h-full object-cover rounded-[18px]" />
                     </div>
-                    <h2 className="text-2xl font-black text-white">Partner Login</h2>
+                    <h2 className="text-xl font-black text-white">Partner Login</h2>
                   </div>
-                  <form onSubmit={handlePasswordLogin} className="space-y-4 text-xs">
-                    <input type="tel" maxLength="10" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))} placeholder="10-digit mobile" className="w-full bg-slate-950 border p-3.5 rounded-2xl text-white font-bold outline-none" required />
-                    <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="Password" className="w-full bg-slate-950 border p-3.5 rounded-2xl text-white font-bold outline-none" required />
-                    <button type="submit" className="w-full bg-[#fc8019] text-slate-950 py-4 rounded-2xl font-black cursor-pointer shadow-lg">Login to Hub 🚀</button>
+                  <form onSubmit={handlePasswordLogin} className="space-y-3 text-xs">
+                    <input type="tel" maxLength="10" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))} placeholder="10-digit mobile" className="w-full bg-slate-950 border p-3 rounded-2xl text-white font-bold outline-none" required />
+                    <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="Password" className="w-full bg-slate-950 border p-3 rounded-2xl text-white font-bold outline-none" required />
+                    <button type="submit" className="w-full bg-[#fc8019] text-slate-950 py-3 rounded-2xl font-black cursor-pointer shadow-lg">Login to Hub 🚀</button>
                     <div className="flex justify-between items-center text-[11px] font-bold px-1">
                       <button type="button" onClick={() => setCurrentView('forgot')} className="text-blue-400 underline">Forgot Password?</button>
                       <button type="button" onClick={() => setCurrentView('register')} className="text-emerald-400 underline">Register Rider</button>
