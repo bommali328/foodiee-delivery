@@ -7,6 +7,8 @@ import toast, { Toaster } from 'react-hot-toast';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import logo from './assets/logo.png';
+import { PushNotifications } from '@capacitor/push-notifications';
+import { Capacitor } from '@capacitor/core';
 
 // ✅ BASE URL UPDATE (AWS / Localhost)   
 const API_BASE_URL = import.meta.env.VITE_API_URL || "https://api.foodiee.shop";
@@ -148,6 +150,47 @@ export default function DeliveryDashboard() {
     };
   }, [incomingOrder]);
 
+ // ✅ Native Push Notifications & Permissions Registration for Delivery Partner
+  useEffect(() => {
+    const registerPartnerPush = async () => {
+      try {
+        if (typeof Capacitor === 'undefined' || !Capacitor.isNativePlatform()) {
+          console.log("Running on Web Browser. PushNotifications plugin skipped.");
+          return;
+        }
+
+        let permResult = await PushNotifications.checkPermissions();
+        if (permResult.receive === 'prompt') {
+          permResult = await PushNotifications.requestPermissions();
+        }
+        
+        if (permResult.receive === 'granted') {
+          await PushNotifications.register();
+          
+          PushNotifications.addListener('registration', async (token) => {
+            console.log('Partner Native Push Registration Token:', token.value);
+            const partnerMob = localStorage.getItem('partnerMobile');
+            if (partnerMob && token.value) {
+              await fetch(`${API_BASE_URL}/api/partner/update-fcm-token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mobile: partnerMob, fcmToken: token.value })
+              });
+              console.log("Partner FCM Token successfully synced to database!");
+            }
+          });
+        }
+      } catch (error) {
+        console.log("Push notifications not supported in this environment:", error);
+      }
+    };
+
+    if (isLoggedIn) {
+      registerPartnerPush();
+    }
+  }, [isLoggedIn]);
+
+  
   useEffect(() => {
     const mob = partnerProfile.mobile || localStorage.getItem('partnerMobile');
     if (mob) {
